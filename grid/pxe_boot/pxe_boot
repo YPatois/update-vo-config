@@ -82,7 +82,8 @@ class OneHostData():
         self.host_data = {}
         self.host_data['hostname'] = self.host_vars['inventory_hostname']
         if (not 'gateway' in self.host_vars):
-            self.host_data['gateway'] =  '.'.join(self.host_vars['ipv4'].split('.')[0:3]+['2'])
+            self.host_data['gateway'] =  '.'.join(
+                self.host_vars['ipv4'].split('.')[0:3]+['2'])
         else:
             self.host_data['gateway'] = self.host_vars['gateway']
         network = ipaddress.ip_network(self.host_vars['ipv4'],strict=False)
@@ -95,14 +96,16 @@ class OneHostData():
 class CreatePXEFile(OneHostData):
     """Create PXE file."""
     defaults = {
-        'linux': '/alma9.4_x86_64/vmlinuz',
+        '_kernel': '/alma9.4_x86_64/vmlinuz',
         'ramdisk': 32768,
         'initrd': '/alma9.4_x86_64/initrd.img',
         'noipv6': '1',
         'disable_ipv6': '1',
         'ipv6.disable_ipv6': '1',
+        'inst.nompath': True,
+        'nompath': True,
         'inst.sshd': True,
-        'inst.cmdline': True 
+        'inst.cmdline': True,
     }
     def __init__(self,host_vars):
         """Init."""
@@ -119,6 +122,8 @@ class CreatePXEFile(OneHostData):
         self.pxe_data['_hostname'] = self.host_vars['inventory_hostname']
         self.pxe_data['ifname'] = ':'.join([self.host_vars['iface_name'],
             self.host_vars['ifdevice']])
+
+        self.pxe_data['bootdev'] = self.host_vars['iface_name']
 
         self.pxe_data['gateway'] = self.host_data['gateway']
         
@@ -152,7 +157,13 @@ class CreatePXEFile(OneHostData):
             os.makedirs(os.path.dirname(filename))
         # Open filename for writing
         with open(filename, 'w') as f:
-            f.write('set root=(pxe)\n')
+            f.write("""
+set timeout=0
+set default=0
+
+menuentry 'Alma9.4' {
+    set root=(pxe)
+    linux """+self.pxe_data['_kernel']+' ')
 
             # Write data
             for key, value in self.pxe_data.items():
@@ -170,9 +181,10 @@ class CreatePXEFile(OneHostData):
                     else:
                         f.write('%s=%s ' % (key, value))
             f.write('\n')
+            f.write('    initrd ' + self.pxe_data['initrd'] + '\n')
 
             # Write end of file
-            f.write('boot\n')
+            f.write('}\n')
 
         
 class CreateKickstartFile(OneHostData):
@@ -216,7 +228,7 @@ zerombr
 bootloader --location=mbr
 
 cmdline
-url --url http://sbglinux.in2p3.fr/mirror/almalinux/9.4/BaseOS/x86_64/os/
+url --url http://sbglinux.in2p3.fr/mirror/almalinux/almalinux/9.4/BaseOS/x86_64/os/
 
 reboot
 """
@@ -228,7 +240,7 @@ reboot
         self.kickstart_data['block3'] = """
 eula --agreed
 skipx
-language en_US
+lang en_US
 keyboard --xlayouts=fr
 selinux --permissive
 timezone --utc Europe/Paris
@@ -236,10 +248,9 @@ timezone --utc Europe/Paris
 firewall --disabled
         """
         # Network configuration
-        #network --bootproto=static --device=eth0 --hostname=sbgce2.in2p3.fr --nameserver=193.48.86.103 --ip=134.158.150.67 --netmask=255.255.255.0 --gateway=134.158.150.2
         self.kickstart_data['network'] = ' '.join(
             ['network --bootproto=static',
-            '--bindto=mac', '--onboot yes', '-noipv6',
+            '--bindto=mac', '--onboot yes', '--noipv6',
             '--device=' + self.host_vars['iface_name'],
             '--nameserver='+','.join(self.host_data['nameserver']),
             '--ip='+self.host_data['hostip'],
@@ -267,7 +278,11 @@ chmod 0600 /root/.ssh/authorized_keys
         with open('vault/authorized_keys.ks', 'r') as f:
             self.kickstart_data['secretblock2'] = f.read()
         
-        self.kickstart_data['end'] = "%end\n"
+        # FIXME: the wget bellow is needed  but relies on Quattor installation
+        self.kickstart_data['end'] = """
+wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/aii-installack.cgi'     
+%end\n
+"""
 
 
     def write_kickstart_file(self):
@@ -301,8 +316,6 @@ def main():
     CreatePXEFile(host_vars)
     CreateKickstartFile(host_vars)
 
-    
-
-
+# ------------------------------------------------------------------------------
 if __name__ == '__main__':
     main()
