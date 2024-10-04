@@ -293,37 +293,10 @@ touch
         # read secret file into secretblock2
         self.insert_files_data('secretblock2', 'vault/authorized_keys.ks')
         
-        
-        # check that host ssh keys are in vault/hostname/ssh
-        if not os.path.exists(os.path.join('vault', self.host_vars['inventory_hostname'], 'ssh')):
-            print('Path: ' + os.path.join('vault', self.host_vars['inventory_hostname'], 'ssh'))
-            raise ValueError('SSH keys not found in vault')
-        # For ssh keys in vault/hostname/ssh
-        i=0
-        for filename in os.listdir(os.path.join('vault', self.host_vars['inventory_hostname'], 'ssh')):
-            blockname = 'ssh_hostkey' + str(i)
-            self.kickstart_data[blockname+'_pre'] = ('touch /etc/ssh/' + filename+'\n'+
-                'chmod 0600 /etc/ssh/' + filename+'\n')
-            self.insert_files_data(blockname,
-            'vault/' + self.host_vars['inventory_hostname'] + '/ssh/' + filename,
-            '/etc/ssh/' + filename)
-        
-        # check if there are host grid keys in vault/hostname/grid
-        if  os.path.exists(os.path.join('vault', self.host_vars['inventory_hostname'], 'grid')):
-            # For grid keys in vault/hostname/grid
-            i=0
-            for filename in os.listdir(os.path.join('vault', self.host_vars['inventory_hostname'], 'grid')):
-                blockname = 'gridkey' + str(i)
-                self.kickstart_data[blockname+'_pre'] = ('touch /etc/grid-security/' + filename+'\n'+
-                    'chmod 0600 /etc/grid-security/' + filename+'\n')
-                self.insert_files_data(blockname,
-                'vault/' + self.host_vars['inventory_hostname'] + '/grid/' + filename,
-                '/etc/grid-security/' + filename)
-
-        
-        # FIXME: the wget below is needed  but relies on Quattor installation
+        # FIXME: the two wget below are needed  but relies on Quattor installation
         self.kickstart_data['end'] = """
 wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/aii-installack.cgi'     
+wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/sbg-askcert.cgi'
 %end\n
 """
 
