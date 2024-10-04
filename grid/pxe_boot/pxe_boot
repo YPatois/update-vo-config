@@ -17,6 +17,7 @@
 
 # 80 columns line comment for reference:
 # ------------------------------------------------------------------------------
+import ipaddress
 import argparse
 from ansible.parsing.dataloader import DataLoader
 from ansible.inventory.manager import InventoryManager
@@ -72,7 +73,6 @@ class CreatePXEFile():
         'ramdisk': 32768,
         'initrd': '/alma9.4_x86_64/initrd.img',
         'nameserver': ['193.48.86.103', '193.48.86.224'],
-        '_ipmask': '255.255.255.0',
         'noipv6': '1',
         'disable_ipv6': '1',
         'ipv6.disable_ipv6': '1',
@@ -91,10 +91,14 @@ class CreatePXEFile():
         self.pxe_data['_hostname'] = self.host_vars['inventory_hostname']
         if (not 'gateway' in self.host_vars):
             gateway = '.'.join(self.host_vars['ipv4'].split('.')[0:3]+['2'])
-        if ('ipmask' in self.host_vars):
-            self.pxe_data['_ipmask'] = self.host_vars['ipmask']
-        self.pxe_data['ip'] = ':'.join([self.host_vars['ipv4'],
-            '',gateway,self.pxe_data['_ipmask'],self.pxe_data['_hostname'],
+        
+        # self.host_vars['ipv4'] is an x.x.x.x/x format
+        network = ipaddress.ip_network(self.host_vars['ipv4'],strict=False)
+        netmask= str(network.netmask)
+        hostip = self.host_vars['ipv4'].split('/')[0]
+        
+        self.pxe_data['ip'] = ':'.join([hostip,
+            '',gateway,netmask,self.pxe_data['_hostname'],
             '','none'])
 
         if (False & ('ipv6' in self.host_vars)):
