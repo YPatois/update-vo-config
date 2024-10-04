@@ -46,10 +46,10 @@ class MyMyHostsData():
         self.variable_manager = VariableManager(loader=self.data_loader,
             inventory=self.inventory)
         
-    def list_hosts(self):
+    def get_hosts_list(self):
         """List hosts."""
-        hosts = self.inventory.list_hosts()
-        print (hosts)
+        return self.inventory.get_hosts()
+        
 
     def list_groups(self):
         """List groups."""
@@ -61,11 +61,10 @@ class MyMyHostsData():
         hosts = self.inventory.get_groups_dict()[group_name]
         print (hosts)
     
-    def get_vars(self,hostname):
+    def get_vars(self,host):
         """Get vars."""
-        vars = self.variable_manager.get_vars(
-            host=self.inventory.get_host(hostname))
-        return vars
+        return self.variable_manager.get_vars(host=host)
+    
 
 
 
@@ -247,19 +246,22 @@ timezone --utc Europe/Paris
 
 firewall --disabled
         """
-        # Network configuration
-        self.kickstart_data['network'] = ' '.join(
-            ['network --bootproto=static',
-            '--bindto=mac', '--onboot yes', '--noipv6',
-            '--device=' + self.host_vars['iface_name'],
-            '--nameserver='+','.join(self.host_data['nameserver']),
-            '--ip='+self.host_data['hostip'],
-            '--netmask='+self.host_data['netmask'],
-            '--gateway='+ self.host_data['gateway']]
-        )
+    
+        # Network configuration: NOTE: suspended for now, and maybe not needed
+        # at all. Ansible will take care of it.
+        #self.kickstart_data['network'] = ' '.join(
+        #    ['network --bootproto=static',
+        #    '--bindto=mac', '--onboot yes',
+        #    '--device=' + self.host_vars['iface_name'],
+        #    '--nameserver='+','.join(self.host_data['nameserver']),
+        #    '--ip='+self.host_data['hostip'],
+        #    '--netmask='+self.host_data['netmask'],
+        #    '--gateway='+ self.host_data['gateway']]
+        #)
 
         self.kickstart_data['block4'] = """
 %packages
+rsync
 %end
 
 %pre
@@ -277,6 +279,11 @@ chmod 0600 /root/.ssh/authorized_keys
         # read secret file into secretblock2
         with open('vault/authorized_keys.ks', 'r') as f:
             self.kickstart_data['secretblock2'] = f.read()
+        
+        # check that host ssh keys are in vault/hostname/ssh
+        if not os.path.exists(os.path.join('vault', self.host_vars['inventory_hostname'], 'ssh')):
+            print('Path: ' + os.path.join('vault', self.host_vars['inventory_hostname'], 'ssh'))
+            raise ValueError('SSH keys not found in vault')
         
         # FIXME: the wget bellow is needed  but relies on Quattor installation
         self.kickstart_data['end'] = """
@@ -296,6 +303,19 @@ wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/aii-installack.c
         with open(filename, 'w') as f:
             f.write('\n'.join(self.kickstart_data.values()))
 
+def generate_config_for_all_hosts():
+    """Generate config for all hosts."""
+    my_hosts_data = MyMyHostsData("vault/ansible_data/hosts")
+    for host in my_hosts_data.get_hosts_list():
+        host_vars = my_hosts_data.get_vars(host)
+        # If group_names contains either 'ce_arc', 
+        # 'grid-ui' or 'grid_wn', do not generate config
+        if ('ce_arc' in host_vars['group_names'] 
+            or 'grid-ui' in host_vars['group_names'] 
+            or 'grid_wn' in host_vars['group_names']):
+            CreatePXEFile(host_vars)
+            CreateKickstartFile(host_vars)
+
 # ------------------------------------------------------------------------------
 def main():
     """Main function."""
@@ -306,15 +326,7 @@ def main():
     )
     args = parser.parse_args()
 
-    my_hosts_data = MyMyHostsData("sample_files/hosts")
-    #my_hosts_data.list_hosts()
-    #my_hosts_data.list_groups()
-    #my_hosts_data.list_hosts_in_group("ce_arc")
-
-    host_vars = my_hosts_data.get_vars("sbgwn49.in2p3.fr")
-
-    CreatePXEFile(host_vars)
-    CreateKickstartFile(host_vars)
+    generate_config_for_all_hosts()
 
 # ------------------------------------------------------------------------------
 if __name__ == '__main__':
