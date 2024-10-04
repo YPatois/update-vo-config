@@ -18,7 +18,7 @@
 import argparse
 from ansible.parsing.dataloader import DataLoader
 from ansible.inventory.manager import InventoryManager
-
+from ansible.vars.manager import VariableManager
 
 DESCRIPTION = "Generates files to be used for PXE booting from ansible data"
 VERSION = "0.1"
@@ -27,16 +27,32 @@ VERSION = "0.1"
 class MyInventory():
     """My inventory class."""
 
-    def __init__(self):
-        pass
+    def __init__(self,hosts_file):
+        """Initialize the MyInventory class."""
+        self.hosts_file = hosts_file
+        self.read_ansible_hosts_file()
 
-# Load ansible inventory data
-def load_ansible_inventory_data():
-    """Load ansible inventory data."""
-    data_loader = DataLoader()
-    inventory = InventoryManager(loader = data_loader,
-                             sources=["sample_files/hosts"])
-    return inventory
+    # Load ansible inventory data
+    def read_ansible_hosts_file(self):
+        """Load ansible inventory data."""
+        data_loader = DataLoader()
+        self.inventory = InventoryManager(loader = data_loader,
+                                sources=[self.hosts_file])
+        
+    def list_hosts(self):
+        """List hosts."""
+        hosts = self.inventory.list_hosts()
+        print (hosts)
+
+    def list_groups(self):
+        """List groups."""
+        groups = self.inventory.list_groups()
+        print (groups)
+
+    def list_hosts_in_group(self, group_name):
+        """List hosts in group."""
+        hosts = self.inventory.get_groups_dict()[group_name]
+        print (hosts)
 
 def main():
     """Main function."""
@@ -47,8 +63,16 @@ def main():
     )
     args = parser.parse_args()
 
-    inventory = load_ansible_inventory_data()
-
+    #inventory = MyInventory("sample_files/hosts")
+    #inventory.list_hosts()
+    #inventory.list_groups()
+    #inventory.list_hosts_in_group("ce_arc")
+    data_loader = DataLoader()
+    inventory = InventoryManager(loader = data_loader,
+                                sources=["sample_files/hosts"])
+    variable_manager = VariableManager(loader=data_loader, inventory=inventory)
+    vars = variable_manager.get_vars(host=inventory.get_host("sbgce1.in2p3.fr"))
+    print(vars)
 
 
 if __name__ == '__main__':
