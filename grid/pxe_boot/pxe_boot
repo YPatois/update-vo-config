@@ -15,6 +15,8 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+# 80 columns line comment for reference:
+# ------------------------------------------------------------------------------
 import argparse
 from ansible.parsing.dataloader import DataLoader
 from ansible.inventory.manager import InventoryManager
@@ -24,20 +26,21 @@ DESCRIPTION = "Generates files to be used for PXE booting from ansible data"
 VERSION = "0.1"
 
 
-class MyInventory():
-    """My inventory class."""
-
+# ------------------------------------------------------------------------------
+class MyMyHostsData():
+    """My hosts data."""
     def __init__(self,hosts_file):
-        """Initialize the MyInventory class."""
+        """Init."""
         self.hosts_file = hosts_file
-        self.read_ansible_hosts_file()
+        self.read_ansible_data()
 
-    # Load ansible inventory data
-    def read_ansible_hosts_file(self):
-        """Load ansible inventory data."""
-        data_loader = DataLoader()
-        self.inventory = InventoryManager(loader = data_loader,
-                                sources=[self.hosts_file])
+    def read_ansible_data(self):
+        """Get data."""
+        self.data_loader = DataLoader()
+        self.inventory = InventoryManager(loader = self.data_loader,
+            sources=[self.hosts_file])
+        self.variable_manager = VariableManager(loader=self.data_loader,
+            inventory=self.inventory)
         
     def list_hosts(self):
         """List hosts."""
@@ -53,7 +56,84 @@ class MyInventory():
         """List hosts in group."""
         hosts = self.inventory.get_groups_dict()[group_name]
         print (hosts)
+    
+    def get_vars(self,hostname):
+        """Get vars."""
+        vars = self.variable_manager.get_vars(
+            host=self.inventory.get_host(hostname))
+        return vars
 
+
+
+class CreatePXEFile():
+    """Create PXE file."""
+    defaults = {
+        'linux': '/alma9.4_x86_64/vmlinuz',
+        'ramdisk': 32768,
+        'initrd': '/alma9.4_x86_64/initrd.img',
+        'nameserver': ['193.48.86.103', '193.48.86.224'],
+        '_ipmask': '255.255.255.0',
+        'noipv6': '1',
+        'disable_ipv6': '1',
+        'ipv6.disable_ipv6': '1',
+    }
+    def __init__(self,host_vars):
+        """Init."""
+        self.host_vars = host_vars
+        self.set_pxe_data()
+    
+
+    def set_pxe_data(self):
+        """Set PXE data."""
+        self.pxe_data={}
+        for key, value in self.defaults.items():
+            self.pxe_data[key] = value
+        self.pxe_data['_hostname'] = self.host_vars['inventory_hostname']
+        if (not 'gateway' in self.host_vars):
+            gateway = '.'.join(self.host_vars['ipv4'].split('.')[0:3]+['2'])
+        if ('ipmask' in self.host_vars):
+            self.pxe_data['_ipmask'] = self.host_vars['ipmask']
+        self.pxe_data['ip'] = ':'.join([self.host_vars['ipv4'],
+            '',gateway,self.pxe_data['_ipmask'],self.pxe_data['_hostname'],
+            '','none'])
+
+        if (False & ('ipv6' in self.host_vars)):
+            # remove entries that disable ipv6 in pxe data
+            del self.pxe_data['noipv6']
+            del self.pxe_data['disable_ipv6']
+            del self.pxe_data['ipv6.disable_ipv6']
+
+    def write_pxe_file(self,filename):
+        """Write PXE file."""
+        # Open filename for writing
+        with open(filename, 'w') as f:
+            f.write('set root=(pxe)\n')
+
+            # Write data
+            for key, value in self.pxe_data.items():
+                # If key starts with _, skip it
+                if key[0] == '_':
+                    continue
+                # if value is list, loop over list
+                if type(value) is list:
+                    for item in value:
+                        f.write('%s=%s ' % (key, item))
+                else:
+                    f.write('%s=%s ' % (key, value))
+            f.write('\n')
+
+            # Write end of file
+            f.write('boot\n')
+
+    def create_pxe_file(self):
+        """Create PXE file."""
+        print (self.host_vars['inventory_hostname'])
+        print (self.host_vars['ipv4'])
+        print (self.host_vars['ipv6'])
+        
+
+
+# ------------------------------------------------------------------------------
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(description=DESCRIPTION)
@@ -63,16 +143,17 @@ def main():
     )
     args = parser.parse_args()
 
-    #inventory = MyInventory("sample_files/hosts")
-    #inventory.list_hosts()
-    #inventory.list_groups()
-    #inventory.list_hosts_in_group("ce_arc")
-    data_loader = DataLoader()
-    inventory = InventoryManager(loader = data_loader,
-                                sources=["sample_files/hosts"])
-    variable_manager = VariableManager(loader=data_loader, inventory=inventory)
-    vars = variable_manager.get_vars(host=inventory.get_host("sbgce1.in2p3.fr"))
-    print(vars)
+    my_hosts_data = MyMyHostsData("sample_files/hosts")
+    #my_hosts_data.list_hosts()
+    #my_hosts_data.list_groups()
+    #my_hosts_data.list_hosts_in_group("ce_arc")
+
+    host_vars = my_hosts_data.get_vars("sbgce1.in2p3.fr")
+
+    create_pxe_file = CreatePXEFile(host_vars)
+    create_pxe_file.write_pxe_file("sbgce1.in2p3.fr.pxe")
+
+    
 
 
 if __name__ == '__main__':
