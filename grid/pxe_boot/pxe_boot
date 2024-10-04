@@ -149,7 +149,7 @@ class CreatePXEFile(OneHostData):
 
     def write_pxe_file(self):
         """Write PXE file."""
-        filename = os.path.join('/tmp/tftpboot/grub-efi',
+        filename = os.path.join('/opt/tmp/pxe_boot/tftpboot/grub-efi',
             self.host_vars['inventory_hostname'] + '.cfg')
         # Create directory if it doesn't exist
         if not os.path.exists(os.path.dirname(filename)):
@@ -194,6 +194,20 @@ class CreateKickstartFile(OneHostData):
         self.set_kickstart_data()
         self.write_kickstart_file()
     
+
+    def insert_files_data(self,blockname,source_filename,destination_filename=None):
+        """Insert files data."""
+        if (not destination_filename):
+            blockstart=""
+            blockend=""
+        else:
+            blockstart="cat << EOF > " + destination_filename + "\n"
+            blockend="EOF\n"
+        with open(source_filename, 'r') as f:
+            blockbody = f.read()
+        blockend="EOF\n"
+        self.kickstart_data[blockname] = blockstart + blockbody + blockend
+            
     def set_kickstart_data(self):
         """Set Kickstart data."""
         self.kickstart_data={}
@@ -233,8 +247,7 @@ reboot
 """
 
         # read secret file into secretblock
-        with open('vault/rootpw.ks', 'r') as f:
-            self.kickstart_data['secretblock1'] = f.read()
+        self.insert_files_data('secretblock1', 'vault/rootpw.ks')
 
         self.kickstart_data['block3'] = """
 eula --agreed
@@ -275,17 +288,40 @@ chmod 0700 /root/.ssh
 
 touch /root/.ssh/authorized_keys
 chmod 0600 /root/.ssh/authorized_keys
+touch 
 """
         # read secret file into secretblock2
-        with open('vault/authorized_keys.ks', 'r') as f:
-            self.kickstart_data['secretblock2'] = f.read()
+        self.insert_files_data('secretblock2', 'vault/authorized_keys.ks')
+        
         
         # check that host ssh keys are in vault/hostname/ssh
         if not os.path.exists(os.path.join('vault', self.host_vars['inventory_hostname'], 'ssh')):
             print('Path: ' + os.path.join('vault', self.host_vars['inventory_hostname'], 'ssh'))
             raise ValueError('SSH keys not found in vault')
+        # For ssh keys in vault/hostname/ssh
+        i=0
+        for filename in os.listdir(os.path.join('vault', self.host_vars['inventory_hostname'], 'ssh')):
+            blockname = 'ssh_hostkey' + str(i)
+            self.kickstart_data[blockname+'_pre'] = ('touch /etc/ssh/' + filename+'\n'+
+                'chmod 0600 /etc/ssh/' + filename+'\n')
+            self.insert_files_data(blockname,
+            'vault/' + self.host_vars['inventory_hostname'] + '/ssh/' + filename,
+            '/etc/ssh/' + filename)
         
-        # FIXME: the wget bellow is needed  but relies on Quattor installation
+        # check if there are host grid keys in vault/hostname/grid
+        if  os.path.exists(os.path.join('vault', self.host_vars['inventory_hostname'], 'grid')):
+            # For grid keys in vault/hostname/grid
+            i=0
+            for filename in os.listdir(os.path.join('vault', self.host_vars['inventory_hostname'], 'grid')):
+                blockname = 'gridkey' + str(i)
+                self.kickstart_data[blockname+'_pre'] = ('touch /etc/grid-security/' + filename+'\n'+
+                    'chmod 0600 /etc/grid-security/' + filename+'\n')
+                self.insert_files_data(blockname,
+                'vault/' + self.host_vars['inventory_hostname'] + '/grid/' + filename,
+                '/etc/grid-security/' + filename)
+
+        
+        # FIXME: the wget below is needed  but relies on Quattor installation
         self.kickstart_data['end'] = """
 wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/aii-installack.cgi'     
 %end\n
@@ -294,7 +330,7 @@ wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/aii-installack.c
 
     def write_kickstart_file(self):
         """Write Kickstart file."""
-        filename = os.path.join('/tmp/ansible_ks',
+        filename = os.path.join('/opt/tmp/pxe_boot/ansible_ks',
             self.host_vars['inventory_hostname'] + '.ks')
         # Create directory if it doesn't exist
         if not os.path.exists(os.path.dirname(filename)):
