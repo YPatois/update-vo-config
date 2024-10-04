@@ -1,0 +1,55 @@
+#!/usr/bin/env python3.12
+# -*- coding: utf-8 -*-
+
+# Copyright 2024 CNRS and University of Strasbourg
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+
+import argparse
+from ansible.parsing.dataloader import DataLoader
+from ansible.inventory.manager import InventoryManager
+
+
+DESCRIPTION = "Generates files to be used for PXE booting from ansible data"
+VERSION = "0.1"
+
+
+class MyInventory():
+    """My inventory class."""
+
+    def __init__(self):
+        pass
+
+# Load ansible inventory data
+def load_ansible_inventory_data():
+    """Load ansible inventory data."""
+    data_loader = DataLoader()
+    inventory = InventoryManager(loader = data_loader,
+                             sources=["sample_files/hosts"])
+    return inventory
+
+def main():
+    """Main function."""
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
+    parser.add_argument(
+        "-v", "--version", action="version", version=VERSION,
+        help="show program\'s version number and exit"
+    )
+    args = parser.parse_args()
+
+    inventory = load_ansible_inventory_data()
+
+
+
+if __name__ == '__main__':
+    main()
