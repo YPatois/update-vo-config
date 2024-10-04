@@ -15,8 +15,11 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+# FIXME: this should be dynamically generated inside ansible
+
 # 80 columns line comment for reference:
 # ------------------------------------------------------------------------------
+import os
 import ipaddress
 import argparse
 from ansible.parsing.dataloader import DataLoader
@@ -66,21 +69,46 @@ class MyMyHostsData():
 
 
 
-class CreatePXEFile():
+class OneHostData():
+    """One host data."""
+
+    def __init__(self,host_vars):
+        """Init."""
+        self.host_vars = host_vars
+        self.set_host_data()
+    
+    def set_host_data(self):
+        """Set host data."""
+        self.host_data = {}
+        self.host_data['hostname'] = self.host_vars['inventory_hostname']
+        if (not 'gateway' in self.host_vars):
+            self.host_data['gateway'] =  '.'.join(self.host_vars['ipv4'].split('.')[0:3]+['2'])
+        else:
+            self.host_data['gateway'] = self.host_vars['gateway']
+        network = ipaddress.ip_network(self.host_vars['ipv4'],strict=False)
+        self.host_data['netmask'] = str(network.netmask)
+        self.host_data['hostip'] = self.host_vars['ipv4'].split('/')[0]
+        self.host_data['nameserver'] = ['193.48.86.103', '193.48.86.224']
+        
+        
+# ------------------------------------------------------------------------------
+class CreatePXEFile(OneHostData):
     """Create PXE file."""
     defaults = {
         'linux': '/alma9.4_x86_64/vmlinuz',
         'ramdisk': 32768,
         'initrd': '/alma9.4_x86_64/initrd.img',
-        'nameserver': ['193.48.86.103', '193.48.86.224'],
         'noipv6': '1',
         'disable_ipv6': '1',
         'ipv6.disable_ipv6': '1',
+        'inst.sshd': True,
+        'inst.cmdline': True 
     }
     def __init__(self,host_vars):
         """Init."""
-        self.host_vars = host_vars
+        super().__init__(host_vars)
         self.set_pxe_data()
+        self.write_pxe_file()
     
 
     def set_pxe_data(self):
@@ -89,26 +117,39 @@ class CreatePXEFile():
         for key, value in self.defaults.items():
             self.pxe_data[key] = value
         self.pxe_data['_hostname'] = self.host_vars['inventory_hostname']
-        if (not 'gateway' in self.host_vars):
-            gateway = '.'.join(self.host_vars['ipv4'].split('.')[0:3]+['2'])
-        
-        # self.host_vars['ipv4'] is an x.x.x.x/x format
-        network = ipaddress.ip_network(self.host_vars['ipv4'],strict=False)
-        netmask= str(network.netmask)
-        hostip = self.host_vars['ipv4'].split('/')[0]
-        
-        self.pxe_data['ip'] = ':'.join([hostip,
-            '',gateway,netmask,self.pxe_data['_hostname'],
-            '','none'])
+        self.pxe_data['ifname'] = ':'.join([self.host_vars['iface_name'],
+            self.host_vars['ifdevice']])
 
-        if (False & ('ipv6' in self.host_vars)):
+        self.pxe_data['gateway'] = self.host_data['gateway']
+        
+        self.pxe_data['ip'] = ':'.join([self.host_data['hostip'],
+            self.host_vars['ifdevice'],
+            self.host_data['netmask'],
+            self.pxe_data['_hostname'],
+            self.host_vars['iface_name'],'none'])
+
+        self.pxe_data['nameserver'] = self.host_data['nameserver']
+
+        # Lets do nothing on ipv6
+        if (True & ('ipv6' in self.host_vars)):
             # remove entries that disable ipv6 in pxe data
             del self.pxe_data['noipv6']
             del self.pxe_data['disable_ipv6']
             del self.pxe_data['ipv6.disable_ipv6']
 
-    def write_pxe_file(self,filename):
+        # FIXME: Kickstart URL should be configurable
+        self.pxe_data['inst.ks'] = (
+            'http://sbgquattor.in2p3.fr/ks/ansible_ks/'
+            + self.host_vars['inventory_hostname'] + '.ks'
+        )
+
+    def write_pxe_file(self):
         """Write PXE file."""
+        filename = os.path.join('/tmp/tftpboot/grub-efi',
+            self.host_vars['inventory_hostname'] + '.cfg')
+        # Create directory if it doesn't exist
+        if not os.path.exists(os.path.dirname(filename)):
+            os.makedirs(os.path.dirname(filename))
         # Open filename for writing
         with open(filename, 'w') as f:
             f.write('set root=(pxe)\n')
@@ -123,19 +164,122 @@ class CreatePXEFile():
                     for item in value:
                         f.write('%s=%s ' % (key, item))
                 else:
-                    f.write('%s=%s ' % (key, value))
+                    # if value is just True, then only write the key
+                    if value is True:
+                        f.write('%s ' % key)
+                    else:
+                        f.write('%s=%s ' % (key, value))
             f.write('\n')
 
             # Write end of file
             f.write('boot\n')
 
-    def create_pxe_file(self):
-        """Create PXE file."""
-        print (self.host_vars['inventory_hostname'])
-        print (self.host_vars['ipv4'])
-        print (self.host_vars['ipv6'])
         
+class CreateKickstartFile(OneHostData):
+    """Create Kickstart file."""
+    def __init__(self,host_vars):
+        """Init."""
+        super().__init__(host_vars)
+        self.set_kickstart_data()
+        self.write_kickstart_file()
+    
+    def set_kickstart_data(self):
+        """Set Kickstart data."""
+        self.kickstart_data={}
+        self.kickstart_data['head'] = """
+# Generated by Ansible (not yet)
+"""
+        # FIXME: All those hardcode stuff should be enhanced
+        if ('ce_arc' in self.host_vars['group_names']):
+            self.kickstart_data['partitions'] = """
+clearpart --all --drives=sda --disklabel gpt
+part biosboot   --ondisk=sda --fstype=biosboot --recommended  
+part /boot/efi  --ondisk=sda --fstype=ext2 --size=256 
+part /boot      --ondisk=sda --fstype=ext2 --size=2048
+part /          --ondisk=sda --fstype=ext4 --size=65536
+part swap       --ondisk=sda --fstype=swap --size=8192
+part /home      --ondisk=sda --fstype=ext4 --size=262144
+part /var       --ondisk=sda --fstype=ext4 --size=262144
+part /shared    --ondisk=sda --fstype=ext4 --grow
+"""
+        else:
+            self.kickstart_data['partitions'] = """
+clearpart --all --drives=sda --disklabel gpt
+part biosboot   --ondisk=sda --fstype=biosboot --recommended
+part /boot/efi  --ondisk=sda --fstype=ext2 --size=256 
+part /boot      --ondisk=sda --fstype=ext2 --size=2048
+part swap       --ondisk=sda --fstype=swap --size=8192
+part /          --ondisk=sda --fstype=ext4 --grow
+                """
+        self.kickstart_data['block2'] = """
+zerombr
+bootloader --location=mbr
 
+cmdline
+url --url http://sbglinux.in2p3.fr/mirror/almalinux/9.4/BaseOS/x86_64/os/
+
+reboot
+"""
+
+        # read secret file into secretblock
+        with open('vault/rootpw.ks', 'r') as f:
+            self.kickstart_data['secretblock1'] = f.read()
+
+        self.kickstart_data['block3'] = """
+eula --agreed
+skipx
+language en_US
+keyboard --xlayouts=fr
+selinux --permissive
+timezone --utc Europe/Paris
+
+firewall --disabled
+        """
+        # Network configuration
+        #network --bootproto=static --device=eth0 --hostname=sbgce2.in2p3.fr --nameserver=193.48.86.103 --ip=134.158.150.67 --netmask=255.255.255.0 --gateway=134.158.150.2
+        self.kickstart_data['network'] = ' '.join(
+            ['network --bootproto=static',
+            '--bindto=mac', '--onboot yes', '-noipv6',
+            '--device=' + self.host_vars['iface_name'],
+            '--nameserver='+','.join(self.host_data['nameserver']),
+            '--ip='+self.host_data['hostip'],
+            '--netmask='+self.host_data['netmask'],
+            '--gateway='+ self.host_data['gateway']]
+        )
+
+        self.kickstart_data['block4'] = """
+%packages
+%end
+
+%pre
+%end
+
+%post
+sed -i -e "s/#PermitRootLogin.*/PermitRootLogin without-password/" /etc/ssh/sshd_config
+
+mkdir -p /root/.ssh
+chmod 0700 /root/.ssh
+
+touch /root/.ssh/authorized_keys
+chmod 0600 /root/.ssh/authorized_keys
+"""
+        # read secret file into secretblock2
+        with open('vault/authorized_keys.ks', 'r') as f:
+            self.kickstart_data['secretblock2'] = f.read()
+        
+        self.kickstart_data['end'] = "%end\n"
+
+
+    def write_kickstart_file(self):
+        """Write Kickstart file."""
+        filename = os.path.join('/tmp/ansible_ks',
+            self.host_vars['inventory_hostname'] + '.ks')
+        # Create directory if it doesn't exist
+        if not os.path.exists(os.path.dirname(filename)):
+            os.makedirs(os.path.dirname(filename))
+        # Open filename for writing
+        with open(filename, 'w') as f:
+            f.write('\n'.join(self.kickstart_data.values()))
 
 # ------------------------------------------------------------------------------
 def main():
@@ -152,10 +296,10 @@ def main():
     #my_hosts_data.list_groups()
     #my_hosts_data.list_hosts_in_group("ce_arc")
 
-    host_vars = my_hosts_data.get_vars("sbgce1.in2p3.fr")
+    host_vars = my_hosts_data.get_vars("sbgwn49.in2p3.fr")
 
-    create_pxe_file = CreatePXEFile(host_vars)
-    create_pxe_file.write_pxe_file("sbgce1.in2p3.fr.pxe")
+    CreatePXEFile(host_vars)
+    CreateKickstartFile(host_vars)
 
     
 
