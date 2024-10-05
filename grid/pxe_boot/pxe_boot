@@ -270,6 +270,10 @@ firewall --disabled
         #    '--netmask='+self.host_data['netmask'],
         #    '--gateway='+ self.host_data['gateway']]
         #)
+        # very basic network config, only setting hostname
+        self.kickstart_data['network'] = ' '.join(
+            ['network --hostname=' + self.host_data['hostname']]
+        )
 
         self.kickstart_data['block4'] = """
 %packages
