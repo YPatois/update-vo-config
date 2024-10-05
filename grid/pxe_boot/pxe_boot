@@ -205,7 +205,6 @@ class CreateKickstartFile(OneHostData):
             blockend="EOF\n"
         with open(source_filename, 'r') as f:
             blockbody = f.read()
-        blockend="EOF\n"
         self.kickstart_data[blockname] = blockstart + blockbody + blockend
             
     def set_kickstart_data(self):
@@ -218,7 +217,7 @@ class CreateKickstartFile(OneHostData):
         if ('ce_arc' in self.host_vars['group_names']):
             self.kickstart_data['partitions'] = """
 clearpart --all --drives=sda --disklabel gpt
-part biosboot   --ondisk=sda --fstype=biosboot --recommended  
+part biosboot   --ondisk=sda --fstype=biosboot --size=1
 part /boot/efi  --ondisk=sda --fstype=ext2 --size=256 
 part /boot      --ondisk=sda --fstype=ext2 --size=2048
 part /          --ondisk=sda --fstype=ext4 --size=65536
@@ -230,7 +229,7 @@ part /shared    --ondisk=sda --fstype=ext4 --grow
         else:
             self.kickstart_data['partitions'] = """
 clearpart --all --drives=sda --disklabel gpt
-part biosboot   --ondisk=sda --fstype=biosboot --recommended
+part biosboot   --ondisk=sda --fstype=biosboot --size=1
 part /boot/efi  --ondisk=sda --fstype=ext2 --size=256 
 part /boot      --ondisk=sda --fstype=ext2 --size=2048
 part swap       --ondisk=sda --fstype=swap --size=8192
@@ -275,6 +274,9 @@ firewall --disabled
         self.kickstart_data['block4'] = """
 %packages
 rsync
+wget
+vim
+chkconfig
 %end
 
 %pre
@@ -291,13 +293,65 @@ chmod 0600 /root/.ssh/authorized_keys
 touch 
 """
         # read secret file into secretblock2
-        self.insert_files_data('secretblock2', 'vault/authorized_keys.ks')
+        self.insert_files_data('secretblock2', 'vault/authorized_keys.ks', '/root/.ssh/authorized_keys')
         
         # FIXME: the two wget below are needed  but relies on Quattor installation
         self.kickstart_data['end'] = """
-wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/aii-installack.cgi'     
+cat <<End_Of_Post_Reboot > /usr/local/sbin/ks-post-reboot.sh
+#!/bin/bash
+# Script to run at the first reboot. It installs the base Quattor RPMs
+# and runs the components needed to get the system correctly
+# configured.
+
+# Wait for functional network up by testing DNS lookup via nslookup.
+wait_for_network () {
+    # Wait up to 2 minutes until the network comes up
+    i=0
+    while ! ping -c 1 -w 1 sbgquattor.in2p3.fr &> /dev/null; do
+        sleep 1
+        echo "ks-post-reboot: waiting for network"
+        let i=\\$i+1
+        if [ \\$i -gt 120 ]
+        then
+            fail "Network does not come up ( ping -c 1 -W 1 sbgquattor.in2p3.fr )"
+        fi
+    done
+}
+echo "Network is up"
+
+exec >/root/ks-post-reboot.log 2>&1
+
+wait_for_network 
+
 wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/sbg-askcert.cgi'
-%end\n
+
+/usr/bin/systemctl disable ks-post-reboot.service
+/usr/bin/systemctl mask ks-post-reboot.service
+/usr/bin/systemctl daemon-reload
+
+End_Of_Post_Reboot
+
+cat <<EOF_reboot_unit > /usr/lib/systemd/system/ks-post-reboot.service
+[Unit]
+Description=Quattor AII Post reboot
+After=network.target syslog.target syslog.socket rsyslog.service sshd.service
+Requires=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ks-post-reboot.sh
+
+[Install]
+WantedBy=multi-user.target
+
+EOF_reboot_unit
+
+/usr/bin/systemctl daemon-reload
+/usr/bin/systemctl enable ks-post-reboot.service
+chmod +x /usr/local/sbin/ks-post-reboot.sh
+
+wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/aii-installack.cgi'     
+%end
 """
 
 
@@ -318,9 +372,9 @@ def generate_config_for_all_hosts():
     for host in my_hosts_data.get_hosts_list():
         host_vars = my_hosts_data.get_vars(host)
         # If group_names contains either 'ce_arc', 
-        # 'grid-ui' or 'grid_wn', do not generate config
+        # 'grid_ui' or 'grid_wn', do not generate config
         if ('ce_arc' in host_vars['group_names'] 
-            or 'grid-ui' in host_vars['group_names'] 
+            or 'grid_ui' in host_vars['group_names'] 
             or 'grid_wn' in host_vars['group_names']):
             CreatePXEFile(host_vars)
             CreateKickstartFile(host_vars)
