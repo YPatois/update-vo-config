@@ -3,4 +3,5 @@
 TBD
 
 ## Roadmap
-- Fix the python3.12 requirement
+- Suppress that code and replace it with ansible role
+
