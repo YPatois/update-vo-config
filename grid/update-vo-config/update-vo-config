@@ -250,9 +250,10 @@ def write_cert_info(voms_endpoint):
     subject = ""
     issuer = ""
     if voms_endpoint.cert:
-        cert = crypto.load_certificate(crypto.FILETYPE_PEM, voms_endpoint.cert)
-        subject = get_dn_as_string(cert.get_subject())
-        issuer = get_dn_as_string(cert.get_issuer())
+        print("Certificate: " + voms_endpoint.cert)
+        cert = load_pem_x509_certificate(bytes(voms_endpoint.cert, 'utf-8'))
+        subject = get_dn_as_string(cert.subject)
+        issuer = get_dn_as_string(cert.issuer)
         content = format(
             VOMS_ENDPOINT_CERT_TEMPLATE %
             (voms_endpoint.hostname, subject, issuer)
@@ -368,7 +369,8 @@ def write_vo_template_ansible(vo_details, basedir, namespaces):
                                       'suffix': suffix,
                                       'suffix2': suffix2})
     data['base_uid'] = vo_details['id'] * 1000
-    with open(vo_params_yml, 'w') as f: 
+    with open(vo_params_yml, 'w') as f:
+        # FIXME: quoting strings would be nice but hard, see ruamel-yaml
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
 
 
