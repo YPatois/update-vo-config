@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 # -*- coding: utf-8 -*-
 
 # Copyright 2018 CNRS and University of Strasbourg
@@ -15,11 +15,17 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+# 80 columns line comment for reference:
+# ------------------------------------------------------------------------------
+
 import argparse
 from operator import itemgetter
 import os
 import re
 import sys
+import yaml
+import pickle
+
 try:
     import urllib.request
 except ImportError:
@@ -29,7 +35,7 @@ except ImportError:
     )
     sys.exit(1)
 import xml.etree.ElementTree as ET
-from OpenSSL import crypto
+from cryptography.x509 import load_pem_x509_certificate
 
 SW_MANAGER_ROLES = [
     '/Role=lcgadmin',
@@ -81,7 +87,7 @@ VOMS_MAPPING_TEMPLATE = '''    dict(
     ),
 '''
 
-VO_IDCARDS_URI = "http://operations-portal.egi.eu/api/vo-idcards"
+VO_IDCARDS_URI = "https://operations-portal.egi.eu/api/vo-idcards"
 IDCARDS_FORMAT = "xml"
 CERT_DIR = 'vo/certs'
 PARAMS_DIR = 'vo/params'
@@ -91,11 +97,13 @@ ROOT_ELEM = "data"
 ID_CARD_ELEM = "Vo"
 ID_ATTR = "serial"
 TPL_SUFFIX = ".pan"
+YML_SUFFIX = ".yml"
 
 DESCRIPTION = "Configure VO-related PAN templates"
 VERSION = "1.0"
 
 
+# ------------------------------------------------------------------------------
 class VOMSEndpoint(object):
     """A class representing a VOMS server endpoint (used by a specific VO)."""
 
@@ -253,8 +261,15 @@ def write_cert_info(voms_endpoint):
     return content
 
 
-def write_vo_template(vo_details, basedir, namespaces):
-    """Write VO template."""
+def write_vo_template(vo_details, basedir, namespaces,quattor=False):
+    if (quattor):
+        write_vo_template_quattor(vo_details, basedir, namespaces)
+    else:
+        write_vo_template_ansible(vo_details, basedir, namespaces)
+
+
+def write_vo_template_quattor(vo_details, basedir, namespaces):
+    """Write VO template for Quattor."""
     vo_params_ns = os.path.join(namespaces['params_dir'], vo_details['name'])
     vo_params_tpl = os.path.join(basedir, vo_params_ns + TPL_SUFFIX)
     force_voms_admin = False
@@ -311,6 +326,50 @@ def write_vo_template(vo_details, basedir, namespaces):
     base_uid = vo_details['id'] * 1000
     template.write("'base_uid' ?= %i;\n" % base_uid)
     template.close()
+
+
+# ------------------------------------------------------------------------------
+def write_vo_template_ansible(vo_details, basedir, namespaces):
+    """Write VO template for Ansible."""
+    vo_params_ns  = os.path.join(namespaces['params_dir'], vo_details['name'])
+    vo_params_yml = os.path.join(basedir, vo_params_ns + YML_SUFFIX)
+    force_voms_admin = False
+
+    sys.stdout.write("Writing template for VO " + vo_details['name'] +
+                     " (" + vo_params_yml + ")\n")
+    data = {}
+    data['name'] = vo_details['name']
+    data['account_prefix'] = vo_details['name'][0:3] + to_base26(vo_details['id'])
+    data['voms_servers'] = []
+    for endpoint in vo_details['voms_endpoints']:
+        data['voms_servers'].append({'name': endpoint.hostname,
+                                     'host': endpoint.hostname,
+                                     'port': endpoint.vomses_port,
+                                     'admin_port': endpoint.https_port})
+        if not endpoint.is_admin:
+            if not force_voms_admin:
+                data['voms_servers'].append({'name': endpoint.hostname,
+                                             'type': ['voms-only']})
+            else:
+                sys.stdout.write("WARNING: voms-admin enabled on " +
+                                 "%s as this is the " % endpoint.hostname +
+                                 "only VOMS server (VO card " +
+                                 "inconsistency)\n")
+            
+    # VOMS Mapping
+    data['voms_mappings'] = []
+    legacy_suffix = []
+    for mapping in vo_details['voms_mapping']:
+        suffix = get_legacy_suffix(vo_details['id'], mapping, [], legacy_suffix)
+        legacy_suffix.append(suffix)
+        suffix2 = get_account_suffix(vo_details['name'], mapping)   
+        data['voms_mappings'].append({'description': mapping['desc'],
+                                      'fqan': mapping['expr'],
+                                      'suffix': suffix,
+                                      'suffix2': suffix2})
+    data['base_uid'] = vo_details['id'] * 1000
+    with open(vo_params_yml, 'w') as f: 
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
 
 
 def extract_old_cert(server_cert_tpl=None, debug=False):
@@ -531,9 +590,24 @@ def parse_vo_card(vo_card):
 
     return voconfig
 
-
-def get_vo_card_data(vo_idcards_uri, idcards_format, token):
+# Get the VO card data either from file or fresh
+def get_vo_card_data(vo_idcards_uri, idcards_format, token,use_pickle=False):
     """Return th VO card data."""
+    if (use_pickle and os.path.exists("vo_idcards.pkl")):
+        return get_vo_card_data_from_file(vo_idcards_uri, idcards_format)
+    else:
+        return get_vo_card_data_fresh(vo_idcards_uri, idcards_format, token, use_pickle)
+
+
+def get_vo_card_data_from_file(vo_idcards_uri, idcards_format):
+    """Return th VO card data."""
+    with open("vo_idcards.pkl", "rb") as f:
+        vo_card_data = pickle.load(f)
+    return vo_card_data
+
+def get_vo_card_data_fresh(vo_idcards_uri, idcards_format, token,use_pickle):
+    """Return th VO card data."""
+    raise Exception("Not implemented")
     url = format('%s/%s' % (vo_idcards_uri, idcards_format))
     headers = {'X-API-Key': token}
     vo_card_data = []
@@ -552,6 +626,10 @@ def get_vo_card_data(vo_idcards_uri, idcards_format, token):
         return None
     for vocard in tree.iter(ID_CARD_ELEM):
         vo_card_data.append(parse_vo_card(vocard))
+
+    if use_pickle:
+        with open("vo_idcards.pkl", "wb") as f:
+            pickle.dump(vo_card_data, f)
     return vo_card_data
 
 
@@ -572,12 +650,25 @@ def update_vo_config():
         help="token used for authentication against the Operations Portal",
         required=True
     )
+    parser.add_argument(
+        "-q", "--quattor", action='store_true',
+        help="If set, generates Quattor files, otherwise Ansible files will be generated"
+    )
+    parser.add_argument(
+        "--use-pickle", action='store_true', default=False,
+        help="Use pickle file to store the VO card data, if exists, or creates a new one if not"
+    )
     args = parser.parse_args()
     basedir = args.basedir
     token = args.token
+    quattor = args.quattor
+    use_pickle = args.use_pickle
+
+    # Get the VO card data
     vo_card_data = get_vo_card_data(
         vo_idcards_uri=VO_IDCARDS_URI, idcards_format=IDCARDS_FORMAT,
-        token=token
+        token=token,
+        use_pickle=use_pickle
     )
     if not vo_card_data:
         sys.stderr.write("ERROR Could not retrieve VO Card data. The vo" +
@@ -595,7 +686,7 @@ def update_vo_config():
         if not os.path.isdir(dirname):
             os.makedirs(dirname)
     for vo_data in vo_card_data:
-        write_vo_template(vo_data, basedir, namespaces)
+        write_vo_template(vo_data, basedir, namespaces,quattor)
     write_dn_list(vo_card_data, basedir, namespaces)
     write_vo_list(vo_card_data, basedir, namespaces)
     update_voms_servers(vo_card_data, basedir, namespaces)
