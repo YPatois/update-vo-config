@@ -437,8 +437,7 @@ def update_voms_servers(vo_details, basedir, namespaces, debug=False):
                              "voms server.\n")
         else:
             try:
-                x509_cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert)
-
+                x509_cert = load_pem_x509_certificate(bytes = cert)
             except crypto.Error as e:
                 sys.stderr.write("ERROR Certificate for %s " % hostname +
                                  "could not be loaded: %s\n" % e)
