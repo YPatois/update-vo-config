@@ -344,8 +344,8 @@ def write_vo_template_ansible(vo_details, basedir, namespaces):
     for endpoint in vo_details['voms_endpoints']:
         data['voms_servers'].append({'name': endpoint.hostname,
                                      'host': endpoint.hostname,
-                                     'port': endpoint.vomses_port,
-                                     'admin_port': endpoint.https_port})
+                                     'port': int(endpoint.vomses_port),
+                                     'admin_port': int(endpoint.https_port)})
         if not endpoint.is_admin:
             if not force_voms_admin:
                 data['voms_servers'].append({'name': endpoint.hostname,
