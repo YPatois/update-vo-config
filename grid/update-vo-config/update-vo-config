@@ -251,7 +251,7 @@ def x509name_to_string(x509name):
         return None
     dn=""
     for attribute in x509name:
-        dn = format('%s/%s=%s' % (dn, attribute.rfc4514_string(), attribute.value))
+        dn = format('%s/%s' % (dn, attribute.rfc4514_string()))
     return dn
 
 
@@ -265,8 +265,8 @@ def collect_cert_info(voms_endpoint):
         cert = load_pem_x509_certificate(bytes(voms_endpoint.cert, 'utf-8'))
         subject = x509name_to_string(cert.subject)
         issuer = x509name_to_string(cert.issuer)
-        cert_data['subject'] = subject
-        cert_data['issuer'] = issuer
+        cert_data['DN'] = subject
+        cert_data['CA_DN'] = issuer
 
     return cert_data
 
@@ -278,7 +278,7 @@ def write_cert_info_quattor(voms_endpoint):
     if (len(cert_data) > 0):
         content = format(
             VOMS_ENDPOINT_CERT_TEMPLATE %
-            (voms_endpoint.hostname, cert_data['subject'], cert_data['issuer'])
+            (voms_endpoint.hostname, cert_data['DN'], cert_data['CA_DN'])
         )
     return content
     
@@ -364,10 +364,18 @@ def write_vo_template_ansible(vo_details, basedir, namespaces):
     data['account_prefix'] = vo_details['name'][0:3] + to_base26(vo_details['id'])
     data['voms_servers'] = []
     for endpoint in vo_details['voms_endpoints']:
+        # VOMS Server
+        dn_data = collect_cert_info(endpoint)
+        if (len(dn_data) == 0):
+            # That server is not valid
+            continue
         data['voms_servers'].append({'name': endpoint.hostname,
                                      'host': endpoint.hostname,
                                      'port': int(endpoint.vomses_port),
-                                     'admin_port': int(endpoint.https_port)})
+                                     'admin_port': int(endpoint.https_port),
+                                     'DN': dn_data['DN'],
+                                     'CA_DN': dn_data['CA_DN'],
+                                     })
         if not endpoint.is_admin:
             if not force_voms_admin:
                 data['voms_servers'].append({'name': endpoint.hostname,
