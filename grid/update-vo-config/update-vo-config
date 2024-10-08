@@ -39,6 +39,7 @@ import xml.etree.ElementTree as ET
 from cryptography.x509 import load_pem_x509_certificate
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
+from cryptography.x509.oid import NameOID
 
 SW_MANAGER_ROLES = [
     '/Role=lcgadmin',
@@ -244,26 +245,43 @@ def get_dn_as_string(dn_list):
     return dn_string
 
 
-def write_cert_info(voms_endpoint):
-    """Write subject and issuer of VOMS server valid certificates.
+def x509name_to_string(x509name):
+    """Return a X509Name object as a string."""
+    if x509name.__class__.__name__ != 'Name':
+        return None
+    dn=""
+    for attribute in x509name:
+        dn = format('%s/%s=%s' % (dn, attribute.rfc4514_string(), attribute.value))
+    return dn
+
+
+def collect_cert_info(voms_endpoint):
+    """Collect subject and issuer of VOMS server valid certificates.
 
     Return a dict element
     """
-    content = ""
-    subject = ""
-    issuer = ""
+    cert_data = {}
     if voms_endpoint.cert:
-        print("Certificate: " + voms_endpoint.cert)
         cert = load_pem_x509_certificate(bytes(voms_endpoint.cert, 'utf-8'))
-        subject = get_dn_as_string(cert.subject)
-        issuer = get_dn_as_string(cert.issuer)
+        subject = x509name_to_string(cert.subject)
+        issuer = x509name_to_string(cert.issuer)
+        cert_data['subject'] = subject
+        cert_data['issuer'] = issuer
+
+    return cert_data
+
+def write_cert_info_quattor(voms_endpoint):
+    """Write subject and issuer of VOMS server valid certificates.
+    """
+    content = ""
+    cert_data = collect_cert_info(voms_endpoint)
+    if (len(cert_data) > 0):
         content = format(
             VOMS_ENDPOINT_CERT_TEMPLATE %
-            (voms_endpoint.hostname, subject, issuer)
+            (voms_endpoint.hostname, cert_data['subject'], cert_data['issuer'])
         )
-
     return content
-
+    
 
 def write_vo_template(vo_details, basedir, namespaces,quattor=False):
     if (quattor):
@@ -488,10 +506,14 @@ def write_vo_list(vo_details, basedir, namespaces):
     template.write(");\n\n")
     template.close()
 
+def write_dn_list(vo_details, basedir, namespaces,quattor=False):
+    if quattor:
+        write_dn_list_quattor(vo_details, basedir, namespaces)
+    else:
+        write_dn_list_ansible(vo_details, basedir, namespaces)
 
-def write_dn_list(vo_details, base_dir, namespaces):
+def write_dn_list_quattor(vo_details, base_dir, namespaces):
     """Write template containing subject / issuer.
-
     It write dn for all valid VOMS server certificates.
     """
     dn_list_ns = os.path.join(namespaces['cert_dir'], "voms_dn_list")
@@ -515,6 +537,34 @@ def write_dn_list(vo_details, base_dir, namespaces):
         template.write(write_cert_info(voms_servers[hostname]))
     template.write(");\n")
     template.close()
+
+
+def write_dn_list_ansible(vo_details, base_dir, namespaces):
+    """Write template containing subject / issuer.  
+    It write dn for all valid VOMS server certificates.
+    """
+    dn_list_ns = os.path.join(namespaces['cert_dir'], "voms_servers_dn_list")
+    dn_list_yml = os.path.join(base_dir, dn_list_ns + YML_SUFFIX)
+    voms_servers = {}
+    sys.stdout.write("Writing the list of defined VOMSs (" +
+                     dn_list_yml + ")\n")
+    for vo_config in vo_details:
+        if not vo_config['voms_endpoints']:
+            sys.stderr.write(
+                "No VOMS server defined for VO: %s.\n" % vo_config['name']
+            )
+        else:
+            for server in vo_config['voms_endpoints']:
+                if server.hostname not in voms_servers:
+                    voms_servers[server.hostname]=server
+    server_dn_dict = {}
+    for hostname in sorted(voms_servers.keys()):
+        dn_data = collect_cert_info(voms_servers[hostname])
+        if (len(dn_data) > 0):
+            server_dn_dict[hostname] = dn_data
+    
+    with open(dn_list_yml, 'w') as f:
+        yaml.dump(server_dn_dict, f, default_flow_style=False, sort_keys=False)
 
 
 def parse_fqan_data(vo_name, fqan):
