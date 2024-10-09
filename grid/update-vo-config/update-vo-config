@@ -267,7 +267,8 @@ def collect_cert_info(voms_endpoint):
         issuer = x509name_to_string(cert.issuer)
         cert_data['DN'] = subject
         cert_data['CA_DN'] = issuer
-
+    else:
+        print("No certificate for VOMS endpoint %s" % voms_endpoint.hostname)
     return cert_data
 
 def write_cert_info_quattor(voms_endpoint):
@@ -385,7 +386,11 @@ def write_vo_template_ansible(vo_details, basedir, namespaces):
                                  "%s as this is the " % endpoint.hostname +
                                  "only VOMS server (VO card " +
                                  "inconsistency)\n")
-            
+    
+    if len(data['voms_servers']) == 0:
+        # Suppress the key
+        del data['voms_servers']
+
     # VOMS Mapping
     data['voms_mappings'] = []
     legacy_suffix = []
