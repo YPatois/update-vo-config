@@ -2,8 +2,7 @@
 
 mkdir data
 
-for wni in `seq 40 59`; do
-    wn=sbgwn${wni}.in2p3.fr
+for wn in `grep sbgwn ../vault/ansible_data/hosts  | grep -v '#'`; do
     echo "Machine: $wn"
-    ssh $wn "ip a" > ./data/$wn.txt
+    ssh -o ConnectTimeout=2 $wn "ip a" > ./data/$wn.txt
 done
