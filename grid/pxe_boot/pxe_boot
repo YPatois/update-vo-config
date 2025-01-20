@@ -80,6 +80,7 @@ class OneHostData():
         """Set host data."""
         self.host_data = {}
         self.host_data['hostname'] = self.host_vars['inventory_hostname']
+        print (self.host_data['hostname'])
         if (not 'gateway' in self.host_vars):
             self.host_data['gateway'] =  '.'.join(
                 self.host_vars['ipv4'].split('.')[0:3]+['2'])
@@ -111,6 +112,7 @@ class CreatePXEFile(OneHostData):
         super().__init__(host_vars)
         self.set_pxe_data()
         self.write_pxe_file()
+        self.write_pxe_file_legacy()
     
 
     def set_pxe_data(self):
@@ -185,7 +187,41 @@ menuentry 'Alma9.4' {
             # Write end of file
             f.write('}\n')
 
-        
+    def write_pxe_file_legacy(self):
+        """Write PXE file."""
+        filename = os.path.join('/opt/tmp/pxe_boot/tftpboot/pxelinux.cfg',
+            self.host_vars['inventory_hostname'] + '.cfg')
+        # Create directory if it doesn't exist
+        if not os.path.exists(os.path.dirname(filename)):
+            os.makedirs(os.path.dirname(filename))
+        # Open filename for writing
+        with open(filename, 'w') as f:
+            f.write("""
+default Install AlmaLinux 9.4 (x86_64)
+
+label Install AlmaLinux 9.4 (x86_64)
+    kernel """+self.pxe_data['_kernel']+'\n')
+
+            f.write('append ')
+
+            # Write data
+            for key, value in self.pxe_data.items():
+                # If key starts with _, skip it
+                if key[0] == '_':
+                    continue
+                # if value is list, loop over list
+                if type(value) is list:
+                    for item in value:
+                        f.write('%s=%s ' % (key, item))
+                else:
+                    # if value is just True, then only write the key
+                    if value is True:
+                        f.write('%s ' % key)
+                    else:
+                        f.write('%s=%s ' % (key, value))
+            f.write('\n')
+            # Write end of file
+            f.write('}\n')
 class CreateKickstartFile(OneHostData):
     """Create Kickstart file."""
     def __init__(self,host_vars):
