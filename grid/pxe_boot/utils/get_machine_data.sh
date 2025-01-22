@@ -1,6 +1,6 @@
 #!/bin/bash
 
-mkdir data
+mkdir -p data
 
 for wn in `grep sbgwn ../vault/ansible_data/hosts  | grep -v '#'`; do
     echo "Machine: $wn"
