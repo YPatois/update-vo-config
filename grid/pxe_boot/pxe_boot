@@ -96,9 +96,9 @@ class OneHostData():
 class CreatePXEFile(OneHostData):
     """Create PXE file."""
     defaults = {
-        '_kernel': '/alma9.4_x86_64/vmlinuz',
+        '_kernel': '/alma9.6_x86_64/vmlinuz',
         'ramdisk': 32768,
-        'initrd': '/alma9.4_x86_64/initrd.img',
+        'initrd': '/alma9.6_x86_64/initrd.img',
         'noipv6': '1',
         'disable_ipv6': '1',
         'ipv6.disable_ipv6': '1',
@@ -162,7 +162,7 @@ class CreatePXEFile(OneHostData):
 set timeout=0
 set default=0
 
-menuentry 'Alma9.4' {
+menuentry 'Alma9.6' {
     set root=(pxe)
     linux """+self.pxe_data['_kernel']+' ')
 
@@ -197,9 +197,9 @@ menuentry 'Alma9.4' {
         # Open filename for writing
         with open(filename, 'w') as f:
             f.write("""
-default Install AlmaLinux 9.4 (x86_64)
+default Install AlmaLinux 9.6 (x86_64)
 
-label Install AlmaLinux 9.4 (x86_64)
+label Install AlmaLinux 9.6 (x86_64)
     kernel """+self.pxe_data['_kernel']+'\n')
 
             f.write('append ')
@@ -276,7 +276,7 @@ zerombr
 bootloader --location=mbr
 
 cmdline
-url --url http://sbglinux.in2p3.fr/mirror/almalinux/almalinux/9.4/BaseOS/x86_64/os/
+url --url http://sbglinux.in2p3.fr/mirror/almalinux/almalinux/9/BaseOS/x86_64/os/
 
 reboot
 """
