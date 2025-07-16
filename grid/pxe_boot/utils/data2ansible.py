@@ -52,9 +52,7 @@ def main():
                 ip6="2001:660:4705:d002:" + ip4split[0] + ":" + ip4split[1] + ":" + ip4split[2] + ":" + ip4split[3]+"/64"
             with open(os.path.join('data', wn) + '.yml', 'w') as f:
                 f.write("---\n")
-                f.write("hostname: '" + wn + "'\n")
                 f.write("ipv4: '" + ip4 + "'\n")
-                f.write("ipv6: '" + ip6 + "'\n")
                 f.write("iface_name: '" + iname + "'\n")
                 f.write("ifdevice: '" + mac.upper() + "'\n")
 # ------------------------------------------------------------------------------
