@@ -266,7 +266,9 @@ class CreateKickstartFile(OneHostData):
             print('No kickstart_partition_blob in host_vars')
             sys.exit(1)
         partitions = ""
+        has_software_raid=False
         for line in self.host_vars['kickstart_partition_blob']:
+            if 'raid' in line: has_software_raid=True
             partitions = partitions + "\n" + line
         partitions = partitions + "\n"
         self.kickstart_data['partitions'] = partitions
@@ -294,18 +296,6 @@ timezone --utc Europe/Paris
 
 firewall --disabled
         """
-    
-        # Network configuration: NOTE: suspended for now, and maybe not needed
-        # at all. Ansible will take care of it.
-        #self.kickstart_data['network'] = ' '.join(
-        #    ['network --bootproto=static',
-        #    '--bindto=mac', '--onboot yes',
-        #    '--device=' + self.host_vars['iface_name'],
-        #    '--nameserver='+','.join(self.host_data['nameserver']),
-        #    '--ip='+self.host_data['hostip'],
-        #    '--netmask='+self.host_data['netmask'],
-        #    '--gateway='+ self.host_data['gateway']]
-        #)
         # very basic network config, only setting hostname
         self.kickstart_data['network'] = ' '.join(
             ['network --hostname=' + self.host_data['hostname']]
@@ -318,10 +308,34 @@ wget
 vim
 chkconfig
 %end
+"""     if (has_software_raid):
+            self.kickstart_data['prescript'] = """
+%pre
+# This should be useless, but for some reason, it's needed
+parted /dev/sda --script mklabel gpt
+parted /dev/sdb --script mklabel gpt
+parted /dev/sda --script mkpart primary ext4 0% 1%
+parted /dev/sdb --script mkpart primary ext4 0% 1%
+parted /dev/sda --script mkpart primary ext4 1% 3%
+parted /dev/sdb --script mkpart primary ext4 1% 3%
+parted /dev/sda --script mkpart primary ext4 3% 25%
+parted /dev/sdb --script mkpart primary ext4 3% 25%
+parted /dev/sda --script mkpart primary ext4 25% 100%
+parted /dev/sdb --script mkpart primary ext4 25% 100%
 
+mdadm -f --create /dev/md0 --level=1  --raid-devices=2 /dev/sda1 /dev/sdb1
+mdadm -f --create /dev/md1 --level=1  --raid-devices=2 /dev/sda2 /dev/sdb2
+mdadm -f --create /dev/md2 --level=1  --raid-devices=2 /dev/sda3 /dev/sdb3
+mdadm -f --create /dev/md3 --level=1  --raid-devices=2 /dev/sda4 /dev/sdb4
+mdadm --assemble --scan
+%end
+"""
+        else:
+            self.kickstart_data['prescript'] = """
 %pre
 %end
-
+"""
+        self.kickstart_data['block4.1'] = """
 %post
 sed -i -e "s/#PermitRootLogin.*/PermitRootLogin without-password/" /etc/ssh/sshd_config
 
