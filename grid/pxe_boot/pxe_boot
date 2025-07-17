@@ -25,6 +25,7 @@ import argparse
 from ansible.parsing.dataloader import DataLoader
 from ansible.inventory.manager import InventoryManager
 from ansible.vars.manager import VariableManager
+from ansible.template import Templar
 
 DESCRIPTION = "Generates files to be used for PXE booting from ansible data"
 VERSION = "0.1"
@@ -41,6 +42,7 @@ class MyMyHostsData():
     def read_ansible_data(self):
         """Get data."""
         self.data_loader = DataLoader()
+        self.data_loader.set_basedir(os.path.dirname(self.hosts_file))
         self.inventory = InventoryManager(loader = self.data_loader,
             sources=[self.hosts_file])
         self.variable_manager = VariableManager(loader=self.data_loader,
@@ -63,10 +65,19 @@ class MyMyHostsData():
     
     def get_vars(self,host):
         """Get vars."""
-        return self.variable_manager.get_vars(host=host)
+        yvars = self.variable_manager.get_vars(host=host)
+        templar = Templar(
+            loader=self.data_loader, variables=yvars)
+        # HACK: quick fix for vault data
+        vlist=[ 'vault_munge_key_password',
+                'vault_slurm_mysql_password',
+                'vault_cms_scratch_key']
+        for v in vlist:
+            yvars[v] = 'secret'
+        for k, v in yvars.items():
+            yvars[k] = templar.template(v)
+        return yvars
     
-
-
 
 class OneHostData():
     """One host data."""
