@@ -308,7 +308,8 @@ wget
 vim
 chkconfig
 %end
-"""     if (has_software_raid):
+"""
+        if (has_software_raid):
             self.kickstart_data['prescript'] = """
 %pre
 # This should be useless, but for some reason, it's needed
