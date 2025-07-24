@@ -318,6 +318,8 @@ chkconfig
 for part in `ls /dev/sd*`; do
         mdadm -f --zero-superblock $part
 done
+parted -s /dev/sda mklabel gpt
+parted -s /dev/sdb mklabel gpt
 %end
 """
         else:
@@ -394,7 +396,7 @@ EOF_reboot_unit
 /usr/bin/systemctl enable ks-post-reboot.service
 chmod +x /usr/local/sbin/ks-post-reboot.sh
 
-wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/aii-installack.cgi'     
+wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/aii-installack.cgi'
 %end
 """
 
