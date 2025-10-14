@@ -72,7 +72,8 @@ class MyMyHostsData():
         # HACK: quick fix for vault data
         vlist=[ 'vault_munge_key_password',
                 'vault_slurm_mysql_password',
-                'vault_cms_scratch_key']
+                'vault_cms_scratch_key',
+                'vault_root_password','vault_authorized_keys']
         for v in vlist:
             yvars[v] = 'secret'
         for k, v in yvars.items():
