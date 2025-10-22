@@ -370,7 +370,7 @@ exec >/root/ks-post-reboot.log 2>&1
 
 wait_for_network 
 
-wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/sbg-askcert.cgi'
+wget -4 -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/sbg-askcert.cgi'
 
 /usr/bin/systemctl disable ks-post-reboot.service
 /usr/bin/systemctl mask ks-post-reboot.service
