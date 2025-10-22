@@ -397,7 +397,7 @@ EOF_reboot_unit
 /usr/bin/systemctl enable ks-post-reboot.service
 chmod +x /usr/local/sbin/ks-post-reboot.sh
 
-wget -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/aii-installack.cgi'
+wget -4 -q --output-document=- 'http://sbgquattor.in2p3.fr/cgi-bin/aii-installack.cgi'
 %end
 """
 
