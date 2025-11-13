@@ -69,13 +69,17 @@ class MyMyHostsData():
         yvars = self.variable_manager.get_vars(host=host)
         templar = Templar(
             loader=self.data_loader, variables=yvars)
-        # HACK: quick fix for vault data
-        vlist=[ 'vault_munge_key_password',
-                'vault_slurm_mysql_password',
-                'vault_cms_scratch_key',
-                'vault_root_password','vault_authorized_keys']
+        # HACK: quick fix for vault data and other undefined stuff
+        vlist=[ 
+                ['vault_munge_key_password','secret'],
+                ['vault_slurm_mysql_password','secret'],
+                ['vault_cms_scratch_key','secret'],
+                ['vault_root_password','secret'],
+                ['vault_authorized_keys','secret'],
+                ['ansible_memtotal_mb',10000]
+        ]
         for v in vlist:
-            yvars[v] = 'secret'
+            yvars[v[0]] = v[1]
         for k, v in yvars.items():
             yvars[k] = templar.template(v)
         return yvars
