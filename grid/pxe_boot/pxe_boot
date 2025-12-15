@@ -75,9 +75,7 @@ class MyMyHostsData():
                 ['vault_slurm_mysql_password','secret'],
                 ['vault_cms_scratch_key','secret'],
                 ['vault_root_password','secret'],
-                ['vault_authorized_keys','secret'],
-                ['ansible_memtotal_mb',10000]
-        ]
+                ['vault_authorized_keys','secret']        ]
         for v in vlist:
             yvars[v[0]] = v[1]
         for k, v in yvars.items():
@@ -285,7 +283,7 @@ bootloader --location=mbr
         
         self.kickstart_data['block2'] = """
 cmdline
-url --url http://sbglinux.in2p3.fr/mirror/almalinux/almalinux/9/BaseOS/x86_64/os/
+url --url http://sbglinux.in2p3.fr/mirror/almalinux/almalinux/9.6/BaseOS/x86_64/os/
 
 reboot
 """
@@ -421,6 +419,7 @@ def generate_config_for_all_hosts():
     """Generate config for all hosts."""
     my_hosts_data = MyMyHostsData("vault/ansible_data/hosts")
     for host in my_hosts_data.get_hosts_list():
+        print("Generating config for %s" % host)
         host_vars = my_hosts_data.get_vars(host)
         # If group_names contains either 'ce_arc', 
         # 'grid_ui' or 'grid_wn', do not generate config
