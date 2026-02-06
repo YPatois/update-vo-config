@@ -75,7 +75,9 @@ class MyMyHostsData():
                 ['vault_slurm_mysql_password','secret'],
                 ['vault_cms_scratch_key','secret'],
                 ['vault_root_password','secret'],
-                ['vault_authorized_keys','secret']        ]
+                ['vault_authorized_keys','secret'],
+                ['vault_ceph_cfswork_key','secret']
+        ]
         for v in vlist:
             yvars[v[0]] = v[1]
         for k, v in yvars.items():
