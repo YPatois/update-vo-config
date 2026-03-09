@@ -113,9 +113,9 @@ class OneHostData():
 class CreatePXEFile(OneHostData):
     """Create PXE file."""
     defaults = {
-        '_kernel': '/alma9.6_x86_64/vmlinuz',
+        '_kernel': '/alma9_x86_64/vmlinuz',
         'ramdisk': 32768,
-        'initrd': '/alma9.6_x86_64/initrd.img',
+        'initrd': '/alma9_x86_64/initrd.img',
         'noipv6': '1',
         'disable_ipv6': '1',
         'ipv6.disable_ipv6': '1',
@@ -285,7 +285,7 @@ bootloader --location=mbr
         
         self.kickstart_data['block2'] = """
 cmdline
-url --url http://sbglinux.in2p3.fr/mirror/almalinux/almalinux/9.6/BaseOS/x86_64/os/
+url --url http://sbglinux.in2p3.fr/mirror/almalinux/almalinux/9/BaseOS/x86_64/os/
 
 reboot
 """
